@@ -12,6 +12,7 @@
 #define MAX_BYTES_FROM_CENTRAL_CACHE 65536
 #define MAX_BATCH_SIZE 512
 #define MIN_BATCH_SIZE 2
+#define NEXT_OBJ(cur) *((void**) cur)
 
 namespace ekko {
 typedef long long pageID_t;
@@ -46,10 +47,6 @@ public:
 
     bool isfree() const {
         return headPtr != 0 && headPtr->_list != 0;
-    }
-
-    void* get_space() {
-        return headPtr->_list;
     }
 
     void push_back(span *spanPtrArg) {
@@ -138,33 +135,36 @@ public:
 
     void push_front(void *start, void *last, size_t batchSize) {
         listSize += batchSize;
-        *((void**) last) = headPtr;
+        NEXT_OBJ(last) = headPtr;
         headPtr = start;
     }
 
     void push_front(void *ptr) {
         ++listSize;
-        *((void**) ptr) = headPtr;
+        NEXT_OBJ(ptr) = headPtr;
         headPtr = ptr;
     };
 
     void* pop_front() {
         --listSize;
         void *ret = headPtr;
-        headPtr = *((void**) headPtr);
+        headPtr = NEXT_OBJ(headPtr);
         return ret;
     }
 
     void* pop_front(size_t batchSize) {
+        if (batchSize == 0)
+            return 0;
+        void *prev, *cur, *ret;
         listSize -= batchSize;
-        void *ret = headPtr;
-        void **cur = (void**) ret, **prev;
+        ret = headPtr;
+        cur = headPtr;
         while (batchSize) {
             --batchSize;
             prev = cur;
-            cur = (void**) *cur;
+            cur = NEXT_OBJ(cur);
         }
-        *prev = 0;
+        NEXT_OBJ(prev) = 0;
         headPtr = cur;
         return ret;
     }

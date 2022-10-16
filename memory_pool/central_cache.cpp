@@ -4,7 +4,7 @@
 namespace ekko{
 span*
 central_cache::get_span_from_page_cache(size_t objSize)
-{   void **cur;
+{   void *cur;
     span *spanPtr;
     size_t nObj;
 
@@ -14,12 +14,15 @@ central_cache::get_span_from_page_cache(size_t objSize)
 
     //init the free object list 
     spanPtr->_list = (void*) (spanPtr->pageID << PAGE_SHIFT);
-    cur = (void**) spanPtr->_list;
+    cur = spanPtr->_list;
     while (--nObj) {
-        *cur = cur+objSize;
-        cur = (void**) *cur;
+        //printf("nObjs %d cur: %x\t", nObj, cur);
+        NEXT_OBJ(cur) = cur+objSize;
+        cur = NEXT_OBJ(cur);
     }
-    *cur = 0;
+    NEXT_OBJ(cur) = 0;
+    //printf("get a span from pagecache: %x\n", spanPtr->pageID);
+    return spanPtr;
 }
 
 size_t
@@ -27,34 +30,37 @@ central_cache::batch_allocate(size_t objSize, void *&start, void *&last)
 {
     size_t index, batchSize, curBatchSize;
     span *spanPtr;
-    void **cur, **prev;
+    void *cur, *prev;
 
     index = get_list_index(objSize);
     batchSize = get_batch_size_from_central_cache(objSize);
 
     spanList[index].lock();
 
-    if (!spanList[index].isfree())
+    if (!spanList[index].isfree()) {
         spanList[index].push_front(get_span_from_page_cache(objSize));
-    
-    start = spanList[index].get_space();
-    cur = (void**) start;
+        //printf("getSpanSpace:%x\n", get_span_from_page_cache(objSize)->_list);
+    }
+    spanPtr = spanList[index].pop_front();
+    cur = start = spanPtr->_list;
+
     curBatchSize = 0;
     do {
+        //printf("order: %d, cur: %x\n", curBatchSize, cur);
         prev = cur;
-        cur = (void**) *cur;
+        cur = NEXT_OBJ(cur);
         ++curBatchSize;
     } while (cur && curBatchSize < batchSize);
     spanPtr->_list = cur;
     spanPtr->useCount += curBatchSize;
-    *prev = 0;
-    last = (void*) prev;
+    NEXT_OBJ(prev) = 0;
+    last = prev;
 
-    // put the empty span in the back
-    if (cur == 0) {
-        spanPtr = spanList[index].pop_front();
+    if (cur == 0)
+        // put the empty span in the back
         spanList[index].push_back(spanPtr);
-    }
+    else
+        spanList[index].push_front(spanPtr);
 
     spanList[index].unlock();
 
@@ -66,20 +72,21 @@ central_cache::batch_deallocate(void *start)
 {
     span *spanPtr;
     size_t index;
-    void **cur;
+    void *cur, *tmp;
     page_cache *pageCachPtr;
 
     pageCachPtr = page_cache::get_instance();
 
-    for (cur = (void**) start; cur; cur = (void**) *cur) {
+    for (cur = start; cur; cur = tmp) {
+        tmp = NEXT_OBJ(cur);
         spanPtr = pageCachPtr->pageID_to_span(((pageID_t) cur) >> PAGE_SHIFT);
         index = get_list_index(spanPtr->objSize);
 
         spanList[index].lock();
 
         spanList[index].erase(spanPtr);
-        *cur = spanPtr->_list;
-        spanPtr->_list = (void*) cur;
+        NEXT_OBJ(cur) = spanPtr->_list;
+        spanPtr->_list = cur;
 
         // all of the span is free?
         if (--spanPtr->useCount == 0)

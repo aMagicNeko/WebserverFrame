@@ -39,6 +39,8 @@ page_cache::refill()
     spanPtr->nPages = NPAGES;
     spanList[NPAGES-1].push_front(spanPtr);
     map_span(spanPtr);
+
+    //printf("refill pageSize:%d\n", spanPtr->nPages);
 }
 
 span*
@@ -55,9 +57,9 @@ page_cache::allocate(size_t pageSize)
     if (!spanList[pageSize-1].empty()) {
         spanPtr = spanList[pageSize-1].pop_front();
 
-        pthread_rwlock_unlock(&rwlock);
-
         spanPtr->objSize = 1;
+
+        pthread_rwlock_unlock(&rwlock);
         return spanPtr;
     }
 
@@ -75,10 +77,11 @@ page_cache::allocate(size_t pageSize)
         spanSplitPtr->pageID = spanPtr->pageID + pageSize;
         map_span(spanSplitPtr);
         spanList[spanSplitPtr->nPages-1].push_front(spanSplitPtr);
+        spanPtr->objSize = 1;
 
         pthread_rwlock_unlock(&rwlock);
 
-        spanPtr->objSize = 1;
+        //printf("spanPtr get: %d\n", spanPtr->nPages);
         return spanPtr;
     }
 

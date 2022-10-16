@@ -10,19 +10,22 @@
 void*
 _test (void*)
 {
-	sleep(10);
+	ekko::threadCachePtr = new ekko::thread_cache;
 	void* arr[NOBJS];
 	for (int i = 0; i < NOBJS; ++i) {
 		arr[i] = ekko::threadCachePtr->allocate(SIZE);
 		*(int*)arr[i] = i;
 	}
-	void *res = malloc(sizeof(long long));
+	long long *res = (long long*) malloc(sizeof(long long));
+	*res = 0;
 	for (int i = 0; i < NOBJS; ++i) {
-		*(int*) res += *(int*) arr[i];
+		*res += *(int*) arr[i];
 		ekko::threadCachePtr->deallocate(arr[i], SIZE);
 	}
-	printf("done\n");
-	return res;
+	delete ekko::threadCachePtr;
+	printf("done \n");
+
+	pthread_exit(res);
 }
 
 void
@@ -31,28 +34,17 @@ test(size_t npthreads)
 	pthread_t threadId[npthreads];
 	for (int i = 0; i < npthreads; ++i)
 		pthread_create(threadId+i, 0, _test, 0);
-	int res = 0;
+	long long res = 0;
 	for (pthread_t x:threadId) {
-		void ** tmp = 0;
-		pthread_join(x, tmp);
-		res += (long long) (*tmp);
+		void *tmp = 0;
+		pthread_join(x, &tmp);
+		res += *((long long*) (tmp));
 	}
 	printf("res: %d", res);
 }
 
 int main()
 {
-	void* arr[NOBJS];
-	ekko::threadCachePtr = new ekko::thread_cache;
-	for (int i = 0; i < NOBJS; ++i) {
-		arr[i] = ekko::threadCachePtr->allocate(SIZE);
-		*(int*)arr[i] = i;
-	}
-	void *res = malloc(sizeof(long long));
-	for (int i = 0; i < NOBJS; ++i) {
-		*(int*) res += *(int*) arr[i];
-		ekko::threadCachePtr->deallocate(arr[i], SIZE);
-	}
-	printf("done\n");
+	test(10);
 
 }
