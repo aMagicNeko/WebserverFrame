@@ -9,7 +9,7 @@
             "name": "(gdb) Launch",
             "type": "cppdbg",
             "request": "launch",
-            "program": "/root/ServerFrame/test/memory_pool_test",
+            "program": "/root/ServerFrame/test/log_test",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",

@@ -15,159 +15,161 @@
 #define NEXT_OBJ(cur) *((void**) cur)
 
 namespace ekko {
-typedef long long pageID_t;
+typedef long long page_id_t;
 
-struct span {
-    pageID_t pageID;
-    size_t nPages;
+struct Span {
+    page_id_t pageid;
+    size_t npages;
 
-    span *next = 0;
-    span *prev = 0;
+    Span *next = 0;
+    Span *prev = 0;
 
     /// @brief free memory objects in the span
     void *_list = 0;
 
     /// @brief =0 when the span in the page_cache
-    size_t objSize = 0;
+    size_t obj_size = 0;
 
     ///@brief number of objects used
-    size_t useCount = 0;
+    size_t use_count = 0;
 };
 
-class span_list {
-private:
-    span *headPtr = 0;
-    span *tailPtr = 0;
-    pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-
+class SpanList {
 public:
-    bool empty() const {
-        return headPtr == 0;
+    bool Empty() const {
+        return head_ptr_ == 0;
     }
 
-    bool isfree() const {
-        return headPtr != 0 && headPtr->_list != 0;
+    bool IsFree() const {
+        return head_ptr_ != 0 && head_ptr_->_list != 0;
     }
 
-    void push_back(span *spanPtrArg) {
-        spanPtrArg->next = 0;
-        if (tailPtr == 0) {
-            headPtr = tailPtr = spanPtrArg;
-            headPtr->prev = 0;
+    void PushBack(Span *span_ptr_arg) {
+        span_ptr_arg->next = 0;
+        if (tail_ptr_ == 0) {
+            head_ptr_ = tail_ptr_ = span_ptr_arg;
+            head_ptr_->prev = 0;
         }
         else {
-            tailPtr->next = spanPtrArg;
-            spanPtrArg->prev = tailPtr;
-            tailPtr = spanPtrArg;
+            tail_ptr_->next = span_ptr_arg;
+            span_ptr_arg->prev = tail_ptr_;
+            tail_ptr_ = span_ptr_arg;
         }
     }
 
-    span* pop_back() {
-        span *spanPtr = tailPtr;
-        if (tailPtr->prev == 0)
-            tailPtr = headPtr = 0;
+    Span* PopBack() {
+        Span *span_ptr = tail_ptr_;
+        if (tail_ptr_->prev == 0)
+            tail_ptr_ = head_ptr_ = 0;
         else {
-            tailPtr = tailPtr->prev;
-            tailPtr->next = 0;
+            tail_ptr_ = tail_ptr_->prev;
+            tail_ptr_->next = 0;
         }
-        spanPtr->prev = 0;
-        return spanPtr;
+        span_ptr->prev = 0;
+        return span_ptr;
     }
 
-    void push_front(span *spanPtrArg) {
-        spanPtrArg->prev = 0;
-        if (headPtr == 0) {
-            headPtr = tailPtr = spanPtrArg;
-            tailPtr->next = 0;
+    void PushFront(Span *span_ptr_arg) {
+        span_ptr_arg->prev = 0;
+        if (head_ptr_ == 0) {
+            head_ptr_ = tail_ptr_ = span_ptr_arg;
+            tail_ptr_->next = 0;
         }
         else {
-            headPtr->prev = spanPtrArg;
-            spanPtrArg->next = headPtr;
-            headPtr = spanPtrArg;
+            head_ptr_->prev = span_ptr_arg;
+            span_ptr_arg->next = head_ptr_;
+            head_ptr_ = span_ptr_arg;
         }
     }
 
-    span* pop_front() {
-        span *spanPtr = headPtr;
-        if (headPtr->next == 0)
-            headPtr = tailPtr = 0;
+    Span* PopFront() {
+        Span *span_ptr = head_ptr_;
+        if (head_ptr_->next == 0)
+            head_ptr_ = tail_ptr_ = 0;
         else {
-            headPtr = headPtr->next;
-            headPtr->prev = 0;
+            head_ptr_ = head_ptr_->next;
+            head_ptr_->prev = 0;
         }
-        spanPtr->next = 0;
-        return spanPtr;
+        span_ptr->next = 0;
+        return span_ptr;
     }
 
-    void erase(span *spanPtrArg) {
-        if (spanPtrArg == headPtr)
-            pop_front();
-        else if (spanPtrArg == tailPtr)
-            pop_back();
+    void Erase(Span *span_ptr_arg) {
+        if (span_ptr_arg == head_ptr_)
+            PopFront();
+        else if (span_ptr_arg == tail_ptr_)
+            PopBack();
         else {
-            spanPtrArg->prev->next = spanPtrArg->next;
-            spanPtrArg->next->prev = spanPtrArg->prev;
+            span_ptr_arg->prev->next = span_ptr_arg->next;
+            span_ptr_arg->next->prev = span_ptr_arg->prev;
         }
-        spanPtrArg->next = spanPtrArg->prev = 0;
+        span_ptr_arg->next = span_ptr_arg->prev = 0;
     }
 
-    void lock() {
-        pthread_mutex_lock(&mutex);
+    void Lock() {
+        pthread_mutex_lock(&mutex_);
     }
 
-    void unlock() {
-        pthread_mutex_unlock(&mutex);
+    void Unlock() {
+        pthread_mutex_unlock(&mutex_);
     }
+
+private:
+    Span *head_ptr_ = 0;
+    Span *tail_ptr_ = 0;
+    pthread_mutex_t mutex_ = PTHREAD_MUTEX_INITIALIZER;
+
 };
 
-class free_list {
+class FreeList {
 private:
-    size_t listSize = 0;
-    void *headPtr = 0;
+    size_t list_size_ = 0;
+    void *head_ptr_ = 0;
 public:
-    bool empty() const {
-        return listSize == 0;
+    bool Empty() const {
+        return list_size_ == 0;
     }
 
-    size_t size() const {
-        return listSize;
+    size_t Size() const {
+        return list_size_;
     }
 
-    void push_front(void *start, void *last, size_t batchSize) {
-        listSize += batchSize;
-        NEXT_OBJ(last) = headPtr;
-        headPtr = start;
+    void PushFront(void *start, void *last, size_t batch_size) {
+        list_size_ += batch_size;
+        NEXT_OBJ(last) = head_ptr_;
+        head_ptr_ = start;
     }
 
-    void push_front(void *ptr) {
-        ++listSize;
-        NEXT_OBJ(ptr) = headPtr;
-        headPtr = ptr;
+    void PushFront(void *ptr) {
+        ++list_size_;
+        NEXT_OBJ(ptr) = head_ptr_;
+        head_ptr_ = ptr;
     };
 
-    void* pop_front() {
-        --listSize;
-        void *ret = headPtr;
-        headPtr = NEXT_OBJ(headPtr);
+    void* PopFront() {
+        --list_size_;
+        void *ret = head_ptr_;
+        head_ptr_ = NEXT_OBJ(head_ptr_);
         return ret;
     }
 
-    void* pop_front(size_t batchSize) {
-        if (batchSize == 0)
+    void* PopFront(size_t batch_size) {
+        if (batch_size == 0)
             return 0;
         void *prev, *cur, *ret;
-        listSize -= batchSize;
-        ret = headPtr;
-        cur = headPtr;
-        while (batchSize) {
-            --batchSize;
+        list_size_ -= batch_size;
+        ret = head_ptr_;
+        cur = head_ptr_;
+        while (batch_size) {
+            --batch_size;
             prev = cur;
             cur = NEXT_OBJ(cur);
         }
         NEXT_OBJ(prev) = 0;
-        headPtr = cur;
+        head_ptr_ = cur;
         return ret;
     }
+
 };
 
 /// @brief get the index of the given object size in the list
@@ -176,7 +178,7 @@ public:
 /// [1025, 8*1024]      128 bytes align     index[72, 127]
 /// [8*1024+1, 64*1024] 1024 bytes align    index[128, 183]
 inline size_t
-get_list_index(size_t size)
+GetListIndex(size_t size)
 {
     if (size <= 128) {
         return (size - 1) >> 3;
@@ -192,11 +194,11 @@ get_list_index(size_t size)
 
 /// @brief get the size of batch given the object size
 inline size_t
-get_batch_size_from_central_cache(size_t objSize)
+GetBatchSizeFromCentralCache(size_t obj_size)
 {
-    if (objSize == 0)
+    if (obj_size == 0)
         return 0;
-    size_t num = MAX_BYTES_FROM_CENTRAL_CACHE / objSize;
+    size_t num = MAX_BYTES_FROM_CENTRAL_CACHE / obj_size;
     if (num > MAX_BATCH_SIZE)
         num = MAX_BATCH_SIZE;
     if (num < MIN_BATCH_SIZE)
@@ -206,9 +208,9 @@ get_batch_size_from_central_cache(size_t objSize)
 
 /// @brief get the number of pages allocated from page_cache given the object size
 inline size_t
-get_npages_from_page_cache(size_t objSize)
+GetNPagesFromPageCache(size_t obj_size)
 {
-    return (objSize * get_batch_size_from_central_cache(objSize) + PAGE_SIZE - 1) >> PAGE_SHIFT;
+    return (obj_size * GetBatchSizeFromCentralCache(obj_size) + PAGE_SIZE - 1) >> PAGE_SHIFT;
 }
 
 }
@@ -219,7 +221,7 @@ get_npages_from_page_cache(size_t objSize)
 /// [1025, 8*1024]      128 bytes align     
 /// [8*1024+1, 64*1024] 1024 bytes align    
 inline size_t
-roundup_size(size_t size)
+RoundUp(size_t size)
 {
     if (size <= 128)
         return ((size+7)>>3)<<3;

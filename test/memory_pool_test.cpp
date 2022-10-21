@@ -10,19 +10,19 @@
 void*
 _test (void*)
 {
-	ekko::threadCachePtr = new ekko::thread_cache;
+	ekko::thread_cache_ptr = new ekko::ThreadCache;
 	void* arr[NOBJS];
 	for (int i = 0; i < NOBJS; ++i) {
-		arr[i] = ekko::threadCachePtr->allocate(SIZE);
+		arr[i] = ekko::thread_cache_ptr->Allocate(SIZE);
 		*(int*)arr[i] = i;
 	}
 	long long *res = (long long*) malloc(sizeof(long long));
 	*res = 0;
 	for (int i = 0; i < NOBJS; ++i) {
 		*res += *(int*) arr[i];
-		ekko::threadCachePtr->deallocate(arr[i], SIZE);
+		ekko::thread_cache_ptr->Deallocate(arr[i], SIZE);
 	}
-	delete ekko::threadCachePtr;
+	delete ekko::thread_cache_ptr;
 	printf("done \n");
 
 	pthread_exit(res);

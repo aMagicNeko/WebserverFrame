@@ -2,101 +2,101 @@
 #include "page_cache.h"
 
 namespace ekko{
-span*
-central_cache::get_span_from_page_cache(size_t objSize)
+Span*
+CentralCache::GetSpanFromPageCache(size_t obj_size)
 {   void *cur;
-    span *spanPtr;
-    size_t nObj;
+    Span *span_ptr;
+    size_t nobjs;
 
-    spanPtr = page_cache::get_instance()->allocate(get_npages_from_page_cache(objSize));
-    spanPtr->objSize = objSize;
-    nObj = (spanPtr->nPages << PAGE_SHIFT) / objSize;
+    span_ptr = PageCache::GetInstance()->Allocate(GetNPagesFromPageCache(obj_size));
+    span_ptr->obj_size = obj_size;
+    nobjs = (span_ptr->npages << PAGE_SHIFT) / obj_size;
 
     //init the free object list 
-    spanPtr->_list = (void*) (spanPtr->pageID << PAGE_SHIFT);
-    cur = spanPtr->_list;
-    while (--nObj) {
-        //printf("nObjs %d cur: %x\t", nObj, cur);
-        NEXT_OBJ(cur) = cur+objSize;
+    span_ptr->_list = (void*) (span_ptr->pageid << PAGE_SHIFT);
+    cur = span_ptr->_list;
+    while (--nobjs) {
+        //printf("nobjss %d cur: %x\t", nobjs, cur);
+        NEXT_OBJ(cur) = cur+obj_size;
         cur = NEXT_OBJ(cur);
     }
     NEXT_OBJ(cur) = 0;
-    //printf("get a span from pagecache: %x\n", spanPtr->pageID);
-    return spanPtr;
+    //printf("get a span from pagecache: %x\n", span_ptr->pageID);
+    return span_ptr;
 }
 
 size_t
-central_cache::batch_allocate(size_t objSize, void *&start, void *&last)
+CentralCache::BatchAllocate(size_t obj_size, void *&start, void *&last)
 {
-    size_t index, batchSize, curBatchSize;
-    span *spanPtr;
+    size_t index, batch_size, curbatch_size;
+    Span *span_ptr;
     void *cur, *prev;
 
-    index = get_list_index(objSize);
-    batchSize = get_batch_size_from_central_cache(objSize);
+    index = GetListIndex(obj_size);
+    batch_size = GetBatchSizeFromCentralCache(obj_size);
 
-    spanList[index].lock();
+    span_list_[index].Lock();
 
-    if (!spanList[index].isfree()) {
-        spanList[index].push_front(get_span_from_page_cache(objSize));
-        //printf("getSpanSpace:%x\n", get_span_from_page_cache(objSize)->_list);
+    if (!span_list_[index].IsFree()) {
+        span_list_[index].PushFront(GetSpanFromPageCache(obj_size));
+        //printf("getSpanSpace:%x\n", GetSpanFromPageCache(obj_size)->_list);
     }
-    spanPtr = spanList[index].pop_front();
-    cur = start = spanPtr->_list;
+    span_ptr = span_list_[index].PopFront();
+    cur = start = span_ptr->_list;
 
-    curBatchSize = 0;
+    curbatch_size = 0;
     do {
-        //printf("order: %d, cur: %x\n", curBatchSize, cur);
+        //printf("order: %d, cur: %x\n", curbatch_size, cur);
         prev = cur;
         cur = NEXT_OBJ(cur);
-        ++curBatchSize;
-    } while (cur && curBatchSize < batchSize);
-    spanPtr->_list = cur;
-    spanPtr->useCount += curBatchSize;
+        ++curbatch_size;
+    } while (cur && curbatch_size < batch_size);
+    span_ptr->_list = cur;
+    span_ptr->use_count += curbatch_size;
     NEXT_OBJ(prev) = 0;
     last = prev;
 
     if (cur == 0)
         // put the empty span in the back
-        spanList[index].push_back(spanPtr);
+        span_list_[index].PushBack(span_ptr);
     else
-        spanList[index].push_front(spanPtr);
+        span_list_[index].PushFront(span_ptr);
 
-    spanList[index].unlock();
+    span_list_[index].Unlock();
 
-    return curBatchSize;
+    return curbatch_size;
 }
 
 void
-central_cache::batch_deallocate(void *start)
+CentralCache::BatchDeallocate(void *start)
 {
-    span *spanPtr;
+    Span *span_ptr;
     size_t index;
     void *cur, *tmp;
-    page_cache *pageCachPtr;
+    PageCache *page_cache_ptr;
 
-    pageCachPtr = page_cache::get_instance();
+    page_cache_ptr = PageCache::GetInstance();
 
     for (cur = start; cur; cur = tmp) {
         tmp = NEXT_OBJ(cur);
-        spanPtr = pageCachPtr->pageID_to_span(((pageID_t) cur) >> PAGE_SHIFT);
-        index = get_list_index(spanPtr->objSize);
+        span_ptr = page_cache_ptr->PageIdToSpan(((page_id_t) cur) >> PAGE_SHIFT);
+        index = GetListIndex(span_ptr->obj_size);
 
-        spanList[index].lock();
+        span_list_[index].Lock();
 
-        spanList[index].erase(spanPtr);
-        NEXT_OBJ(cur) = spanPtr->_list;
-        spanPtr->_list = cur;
+        span_list_[index].Erase(span_ptr);
+        NEXT_OBJ(cur) = span_ptr->_list;
+        span_ptr->_list = cur;
 
         // all of the span is free?
-        if (--spanPtr->useCount == 0)
+        if (--span_ptr->use_count == 0)
             //return to the page cache
-            pageCachPtr->deallocate(spanPtr);
+            page_cache_ptr->Deallocate(span_ptr);
         else
             //put the span in the front
-            spanList[index].push_front(spanPtr);
+            span_list_[index].PushFront(span_ptr);
         
-        spanList[index].unlock();
+        span_list_[index].Unlock();
     }
 
 

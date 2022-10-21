@@ -3,157 +3,157 @@
 namespace ekko {
 
 void
-page_cache::map_span(span *spanPtr)
+PageCache::MapSpan(Span *span_ptr)
 {
-    for (int i = 0; i < spanPtr->nPages; ++i)
-        spanMap[spanPtr->pageID+i] = spanPtr;
+    for (int i = 0; i < span_ptr->npages; ++i)
+        span_map_[span_ptr->pageid+i] = span_ptr;
 }
 
-span*
-page_cache::pageID_to_span(pageID_t pageID)
+Span*
+PageCache::PageIdToSpan(page_id_t page_id)
 {
-    pthread_rwlock_rdlock(&rwlock);
-    std::unordered_map<pageID_t, span*>::iterator iter = spanMap.find(pageID);
-    if (iter == spanMap.end()) {
-        pthread_rwlock_unlock(&rwlock);
+    pthread_rwlock_rdlock(&rwlock_);
+    std::unordered_map<page_id_t, Span*>::iterator iter = span_map_.find(page_id);
+    if (iter == span_map_.end()) {
+        pthread_rwlock_unlock(&rwlock_);
         return 0;
     }
-    pthread_rwlock_unlock(&rwlock);
+    pthread_rwlock_unlock(&rwlock_);
     return iter->second;
 }
 
 void
-page_cache::refill()
+PageCache::Refill()
 {
-    span *spanPtr;
+    Span *span_ptr;
     void *memPtr;
-    pageID_t pID;
+    page_id_t pID;
 
     if ( (memPtr = sbrk(REFILL_SIZE)) == (void*) -1) {
         //perror("sbrk error: %s", strerror(errno));
         return;
     }
 
-    spanPtr = new span;
-    spanPtr->pageID = (pageID_t) memPtr >> PAGE_SHIFT;
-    spanPtr->nPages = NPAGES;
-    spanList[NPAGES-1].push_front(spanPtr);
-    map_span(spanPtr);
+    span_ptr = new Span;
+    span_ptr->pageid = (page_id_t) memPtr >> PAGE_SHIFT;
+    span_ptr->npages = NPAGES;
+    span_list_[NPAGES-1].PushFront(span_ptr);
+    MapSpan(span_ptr);
 
-    //printf("refill pageSize:%d\n", spanPtr->nPages);
+    //printf("refill page_size:%d\n", span_ptr->npages);
 }
 
-span*
-page_cache::allocate(size_t pageSize)
+Span*
+PageCache::Allocate(size_t page_size)
 {
     size_t i;
-    span* spanPtr;
+    Span* span_ptr;
 
-    if (pageSize > NPAGES)
-        pageSize = NPAGES;
+    if (page_size > NPAGES)
+        page_size = NPAGES;
     
-    pthread_rwlock_wrlock(&rwlock);
+    pthread_rwlock_wrlock(&rwlock_);
 
-    if (!spanList[pageSize-1].empty()) {
-        spanPtr = spanList[pageSize-1].pop_front();
+    if (!span_list_[page_size-1].Empty()) {
+        span_ptr = span_list_[page_size-1].PopFront();
 
-        spanPtr->objSize = 1;
+        span_ptr->obj_size = 1;
 
-        pthread_rwlock_unlock(&rwlock);
-        return spanPtr;
+        pthread_rwlock_unlock(&rwlock_);
+        return span_ptr;
     }
 
     //find a spare span
-    for (i = pageSize; i < NPAGES; ++i) {
-        if (spanList[i].empty())
+    for (i = page_size; i < NPAGES; ++i) {
+        if (span_list_[i].Empty())
             continue;
-        spanPtr = spanList[i].pop_front();
+        span_ptr = span_list_[i].PopBack();
 
         //split the span
-        spanPtr->nPages = pageSize;
+        span_ptr->npages = page_size;
 
-        span *spanSplitPtr = new span;
-        spanSplitPtr->nPages = i + 1 - pageSize;
-        spanSplitPtr->pageID = spanPtr->pageID + pageSize;
-        map_span(spanSplitPtr);
-        spanList[spanSplitPtr->nPages-1].push_front(spanSplitPtr);
-        spanPtr->objSize = 1;
+        Span *span_split_ptr = new Span;
+        span_split_ptr->npages = i + 1 - page_size;
+        span_split_ptr->pageid = span_ptr->pageid + page_size;
+        MapSpan(span_split_ptr);
+        span_list_[span_split_ptr->npages-1].PushFront(span_split_ptr);
+        span_ptr->obj_size = 1;
 
-        pthread_rwlock_unlock(&rwlock);
+        pthread_rwlock_unlock(&rwlock_);
 
-        //printf("spanPtr get: %d\n", spanPtr->nPages);
-        return spanPtr;
+        //printf("span_ptr get: %d\n", span_ptr->npages);
+        return span_ptr;
     }
 
-    refill();
+    Refill();
 
-    pthread_rwlock_unlock(&rwlock);
+    pthread_rwlock_unlock(&rwlock_);
 
-    return allocate(pageSize);
+    return Allocate(page_size);
 }
 
 void
-page_cache::deallocate(span *spanPtr)
+PageCache::Deallocate(Span *span_ptr)
 {
-    pageID_t pageID;
-    span *spanCurPtr;
-    std::unordered_map<pageID_t, span*>::iterator mapIter;
-    size_t pageSize;
-    spanPtr->objSize = 0;
+    page_id_t page_id;
+    Span *span_cur_ptr;
+    std::unordered_map<page_id_t, Span*>::iterator mapIter;
+    size_t page_size;
+    span_ptr->obj_size = 0;
     
-    pthread_rwlock_wrlock(&rwlock);
+    pthread_rwlock_wrlock(&rwlock_);
 
     //merge the span in front
-    pageSize = spanPtr->nPages;
+    page_size = span_ptr->npages;
     while (1) {
-        pageID = spanPtr->pageID - 1;
-        mapIter = spanMap.find(pageID);
-        if (mapIter == spanMap.end())
+        page_id = span_ptr->pageid - 1;
+        mapIter = span_map_.find(page_id);
+        if (mapIter == span_map_.end())
             break;
-        spanCurPtr = mapIter->second;
+        span_cur_ptr = mapIter->second;
 
         //if in use?
-        if (spanCurPtr->objSize)
+        if (span_cur_ptr->obj_size)
             break;
         
         //if too big?
-        if ( (pageSize = pageSize + spanCurPtr->nPages) > NPAGES)
+        if ( (page_size = page_size + span_cur_ptr->npages) > NPAGES)
             break;
     
-        spanPtr->pageID = spanCurPtr->pageID;
-        spanPtr->nPages = pageSize;
+        span_ptr->pageid = span_cur_ptr->pageid;
+        span_ptr->npages = page_size;
 
-        spanList[spanCurPtr->nPages-1].erase(spanCurPtr);
-        delete spanCurPtr;
+        span_list_[span_cur_ptr->npages-1].Erase(span_cur_ptr);
+        delete span_cur_ptr;
     }
     
     //merge the span in back
-    pageSize = spanPtr->nPages;
+    page_size = span_ptr->npages;
     while (1) {
-        pageID = spanPtr->pageID + spanPtr->nPages;
-        mapIter = spanMap.find(pageID);
-        if (mapIter == spanMap.end())
+        page_id = span_ptr->pageid + span_ptr->npages;
+        mapIter = span_map_.find(page_id);
+        if (mapIter == span_map_.end())
             break;
-        spanCurPtr = mapIter->second;
+        span_cur_ptr = mapIter->second;
 
         //if in use?
-        if (spanCurPtr->objSize)
+        if (span_cur_ptr->obj_size)
             break;
         
         //if too big?
-        if ( (pageSize = pageSize + spanCurPtr->nPages) > NPAGES)
+        if ( (page_size = page_size + span_cur_ptr->npages) > NPAGES)
             break;
         
-        spanPtr->nPages = pageSize;
+        span_ptr->npages = page_size;
 
-        spanList[spanCurPtr->nPages-1].erase(spanCurPtr);
-        delete spanCurPtr;
+        span_list_[span_cur_ptr->npages-1].Erase(span_cur_ptr);
+        delete span_cur_ptr;
     }
 
-    map_span(spanPtr);
-    spanList[spanPtr->nPages-1].push_front(spanPtr);
+    MapSpan(span_ptr);
+    span_list_[span_ptr->npages-1].PushFront(span_ptr);
 
-    pthread_rwlock_unlock(&rwlock);
+    pthread_rwlock_unlock(&rwlock_);
 }
 
 

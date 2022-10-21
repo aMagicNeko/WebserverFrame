@@ -5,21 +5,21 @@
 
 
 namespace ekko{
-class thread_cache{
-private:
-    free_list freeList[NLISTS];
-
+class ThreadCache{
 public:
     /// @brief allocate API
-    void* allocate(size_t n);
+    void* Allocate(size_t n);
 
     /// @brief deallocate API
-    void deallocate(void *ptr, size_t size);
+    void Deallocate(void *ptr, size_t size);
 
-    ~thread_cache();
+    ~ThreadCache();
+
+private:
+    FreeList free_list_[NLISTS];
 };
 
-thread_local static thread_cache *threadCachePtr = 0;
+thread_local static ThreadCache *thread_cache_ptr = 0;
 
 }
 
