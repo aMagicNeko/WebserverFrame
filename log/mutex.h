@@ -39,22 +39,22 @@ public:
     typedef ScopedLockImpl<Spinlock> Lock;
 
     Spinlock() {
-        pthread_spin_init(&mutex_, 0);
+        pthread_mutex_init(&mutex_, 0);
     }
 
     ~Spinlock() {
-        pthread_spin_destroy(&mutex_);
+        pthread_mutex_destroy(&mutex_);
     }
 
     void lock() {
-        pthread_spin_lock(&mutex_);
+        pthread_mutex_lock(&mutex_);
     }
 
     void unlock() {
-        pthread_spin_unlock(&mutex_);
+        pthread_mutex_unlock(&mutex_);
     }
 private:
-    pthread_spinlock_t mutex_;
+    pthread_mutex_t mutex_; //I have no spinlock in my system.
 };
 
 }
