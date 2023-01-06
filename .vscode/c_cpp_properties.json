@@ -4,6 +4,7 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
+                "/usr/local/opt/mysql/include/mysql/**",
                 "/usr/include/**",
                 "/usr/include/**",
                 "/usr/include/c++/11/**"
